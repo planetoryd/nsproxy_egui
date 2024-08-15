@@ -1,0 +1,26 @@
+[package]
+name = "offdict-egui"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.86"
+eframe = "0.28.1"
+# egui = { version = "0.24.1", path = "../egui/crates/egui" }
+egui = "0.28.1"
+egui-plotter = { version = "0.3.0", path = "../egui-plotter" }
+egui_extras = "0.28.1"
+env_logger = "0.10.1"
+futures = "0.3.30"
+nsproxy-common = { version = "0.1.0", path = "../../common" }
+ringbuf = "0.4.1"
+tarpc = { version = "0.34.0", features = [
+    "serde",
+    "serde-transport",
+    "serde-transport-bincode",
+    "tokio-serde",
+    "unix",
+] }
+tokio = { version = "1.39.2", features = ["full"] }
