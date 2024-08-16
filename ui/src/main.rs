@@ -65,7 +65,9 @@ fn main() -> eframe::Result {
                                     FromClient::Data(d) => {
                                         sx.send(d).await?;
                                     }
-                                    _ => todo!(),
+                                    _ => {
+                                        // todo
+                                    }
                                 }
                             } else {
                                 break;
