@@ -3,16 +3,20 @@
 #![allow(unreachable_code)]
 #![feature(decl_macro)]
 
-use std::{borrow::Borrow, time::Duration};
+use std::{borrow::Borrow, path::PathBuf, time::Duration};
 
 use anyhow::Result as Rest;
 use eframe::egui;
+use egui::Color32;
 use egui_plotter::{
     plotters::{
         chart::ChartBuilder,
         prelude::IntoDrawingArea,
         series::LineSeries,
-        style::{full_palette::WHITE, Color},
+        style::{
+            full_palette::{PURPLE, PURPLE_100, WHITE},
+            Color,
+        },
     },
     EguiBackend,
 };
@@ -23,6 +27,7 @@ use ringbuf::{
     traits::{Consumer, RingBuffer},
     HeapRb,
 };
+use tarpc::serde_transport::unix::TempPathBuf;
 
 macro aok($t:ty) {
     Rest::<$t, anyhow::Error>::Ok(())
@@ -36,6 +41,7 @@ fn main() -> eframe::Result {
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([320.0, 240.0]),
+        hardware_acceleration: eframe::HardwareAcceleration::Preferred,
         ..Default::default()
     };
 
@@ -48,7 +54,10 @@ fn main() -> eframe::Result {
             .unwrap();
         rt.block_on(async {
             use tarpc::serde_transport::unix;
-            let p = unix::TempPathBuf::new(TMP_RPC_PATH);
+            let p = rpc_path_singleton();
+            if p.exists() {
+                std::fs::remove_file(&p)?;
+            }
             use nsproxy_common::rpc::*;
             use tarpc::tokio_serde::formats::*;
             let mut s = unix::listen(p, Bincode::<FromClient, FromServer>::default).await?;
@@ -126,24 +135,28 @@ impl eframe::App for MyApp {
             egui::Frame::default().show(ui, |ui| {
                 let f = || {
                     let r = EguiBackend::new(ui).into_drawing_area();
+                    r.fill(&WHITE.mix(0.003)).unwrap();
                     let mut cb = ChartBuilder::on(&r);
-                    let mut cx = cb.build_cartesian_2d(0..128, 0..59).unwrap();
+                    let mut cx = cb.build_cartesian_2d(0..128, 0..8000).unwrap();
                     cx.configure_mesh()
                         .light_line_style(WHITE.mix(0.005))
                         .bold_line_style(WHITE.mix(0.01))
                         .draw()?;
+
                     cx.draw_series(LineSeries::new(
                         self.ns
                             .loop_time
                             .iter()
                             .enumerate()
                             .map(|(x, y)| (x as i32, y.as_millis() as i32)),
-                        WHITE.mix(0.03),
+                        PURPLE_100.mix(0.8).stroke_width(1),
                     ))?;
+
                     aok!(())
                 };
                 f().unwrap();
             })
         });
+        ctx.request_repaint_after(Duration::from_millis(20));
     }
 }
