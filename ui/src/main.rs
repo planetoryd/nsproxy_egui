@@ -6,28 +6,26 @@
 use std::{borrow::Borrow, path::PathBuf, time::Duration};
 
 use anyhow::Result as Rest;
+use clap::{Command, Parser};
 use eframe::egui;
-use egui::Color32;
-use egui_plotter::{
-    plotters::{
-        chart::ChartBuilder,
-        prelude::IntoDrawingArea,
-        series::LineSeries,
-        style::{
-            full_palette::{PURPLE, PURPLE_100, WHITE},
-            Color,
-        },
-    },
-    EguiBackend,
-};
+
+use egui_plot::{self, Legend};
 use futures::StreamExt;
 use futures::{channel::mpsc::*, SinkExt};
+use nsproxy_common::forever;
 use nsproxy_common::rpc::Data;
 use ringbuf::{
     traits::{Consumer, RingBuffer},
     HeapRb,
 };
-use tarpc::serde_transport::unix::TempPathBuf;
+
+#[derive(Parser)]
+#[command()]
+struct Cli {
+    /// path to socket
+    #[arg(long, short)]
+    sock: Option<PathBuf>,
+}
 
 macro aok($t:ty) {
     Rest::<$t, anyhow::Error>::Ok(())
@@ -45,51 +43,53 @@ fn main() -> eframe::Result {
         ..Default::default()
     };
 
+    let cmd = Cli::parse();
+
     let (sx, rx) = unbounded();
 
     std::thread::spawn(move || {
-        let rt = tokio::runtime::Builder::new_multi_thread()
+        let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .unwrap();
+
         rt.block_on(async {
-            use tarpc::serde_transport::unix;
-            let p = rpc_path_singleton();
-            if p.exists() {
-                std::fs::remove_file(&p)?;
-            }
+            type Codec = Bincode<FromClient, FromServer>;
             use nsproxy_common::rpc::*;
+            use tarpc::serde_transport::unix;
             use tarpc::tokio_serde::formats::*;
-            let mut s = unix::listen(p, Bincode::<FromClient, FromServer>::default).await?;
-            loop {
-                if let Some(p) = s.next().await {
-                    let mut p = p?;
-                    let mut sx = sx.clone();
-                    tokio::spawn(async move {
-                        loop {
-                            let msg = p.next().await;
-                            if let Some(msg) = msg {
-                                let msg = msg?;
-                                match msg {
-                                    FromClient::Data(d) => {
-                                        sx.send(d).await?;
-                                    }
-                                    _ => {
-                                        // todo
-                                    }
+            if let Some(sock) = cmd.sock {
+                let mut p = unix::connect(sock, Codec::default).await?;
+                let mut sx = sx.clone();
+                tokio::spawn(async move {
+                    loop {
+                        let msg = p.next().await;
+                        if let Some(msg) = msg {
+                            let msg = msg?;
+                            match msg {
+                                FromClient::Data(d) => {
+                                    sx.send(d).await?;
                                 }
-                            } else {
-                                break;
+                                _ => {
+                                    // todo
+                                }
                             }
+                        } else {
+                            break;
                         }
-                        aok!(())
-                    });
-                }
+                    }
+                    aok!(())
+                });
+            } else {
+                todo!()
             }
+
+            forever!().await;
             aok!(())
         })
         .unwrap();
     });
+
     eframe::run_native(
         "nsproxy",
         options,
@@ -133,30 +133,21 @@ impl eframe::App for MyApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("performance");
             egui::Frame::default().show(ui, |ui| {
-                let f = || {
-                    let r = EguiBackend::new(ui).into_drawing_area();
-                    r.fill(&WHITE.mix(0.003)).unwrap();
-                    let mut cb = ChartBuilder::on(&r);
-                    let mut cx = cb.build_cartesian_2d(0..128, 0..8000).unwrap();
-                    cx.configure_mesh()
-                        .light_line_style(WHITE.mix(0.005))
-                        .bold_line_style(WHITE.mix(0.01))
-                        .draw()?;
-
-                    cx.draw_series(LineSeries::new(
-                        self.ns
-                            .loop_time
-                            .iter()
-                            .enumerate()
-                            .map(|(x, y)| (x as i32, y.as_millis() as i32)),
-                        PURPLE_100.mix(0.8).stroke_width(1),
-                    ))?;
-
-                    aok!(())
-                };
-                f().unwrap();
+                egui_plot::Plot::new("plot")
+                    .legend(Legend::default())
+                    .show(ui, |pu| {
+                        use egui_plot::*;
+                        pu.line(Line::new(PlotPoints::Owned(
+                            self.ns
+                                .loop_time
+                                .iter()
+                                .enumerate()
+                                .map(|(x, y)| PlotPoint::new(x as f64, y.as_millis() as f64))
+                                .collect(),
+                        )));
+                    })
             })
         });
-        ctx.request_repaint_after(Duration::from_millis(20));
+        ctx.request_repaint_after(Duration::from_millis(5));
     }
 }

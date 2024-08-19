@@ -1,3 +1,4 @@
+[workspace]
 [package]
 name = "nsproxy-ui"
 version = "0.1.0"
@@ -7,11 +8,12 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.86"
+clap = { version = "4.5.16", features = ["derive"] }
 eframe = "0.28.1"
 # egui = { version = "0.24.1", path = "../egui/crates/egui" }
 egui = "0.28.1"
-egui-plotter = { version = "0.3.0", path = "../egui-plotter" }
 egui_extras = "0.28.1"
+egui_plot = "0.28.1"
 env_logger = "0.10.1"
 futures = "0.3.30"
 nsproxy-common = { version = "0.1.0", path = "../../common" }

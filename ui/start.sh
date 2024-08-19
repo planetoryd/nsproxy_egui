@@ -1,1 +1,1 @@
-../../target/debug/nsproxy-ui
+./target/debug/nsproxy-ui
